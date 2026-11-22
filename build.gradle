@@ -71,6 +71,9 @@ dependencies {
 	// Retry
 	implementation 'org.springframework.retry:spring-retry'
 
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+	implementation 'com.github.ben-manes.caffeine:caffeine'
+
 	// Aws
 	implementation platform('software.amazon.awssdk:bom:2.17.219')
 	implementation 'software.amazon.awssdk:s3'
