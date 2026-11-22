@@ -8,9 +8,11 @@ import kappzzang.jeongsan.dto.Image;
 import kappzzang.jeongsan.global.client.dto.request.GeneralOcrRequest;
 import kappzzang.jeongsan.global.client.dto.response.GeneralOcrResponse;
 import kappzzang.jeongsan.global.common.enumeration.ErrorType;
+import kappzzang.jeongsan.global.config.CacheConfig;
 import kappzzang.jeongsan.global.exception.JeongsanException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -38,6 +40,11 @@ public class ClovaApiClient {
         this.clovaOcrProperties = clovaOcrProperties;
         this.clovaOcrClient = clovaOcrClientBuilder.build();
     }
+
+    @Cacheable(
+        cacheNames = CacheConfig.OCR_CACHE,
+        keyGenerator = CacheConfig.IMAGE_HASH_KEY_GENERATOR
+    )
 
     @Retryable(
         retryFor = RestClientException.class,
