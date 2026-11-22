@@ -243,6 +243,7 @@ public class ReceiptAnalyzeE2ETest {
     @AfterEach
     void terminate() throws IOException {
         mockWebServer.shutdown();
+        RestAssured.reset();
     }
 
     @TestConfiguration
