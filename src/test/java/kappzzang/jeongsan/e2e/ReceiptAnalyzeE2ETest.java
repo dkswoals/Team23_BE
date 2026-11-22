@@ -16,6 +16,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.io.IOException;
 import java.util.List;
+import java.util.UUID;
 import kappzzang.jeongsan.domain.KakaoPayInfo;
 import kappzzang.jeongsan.domain.Member;
 import kappzzang.jeongsan.domain.Team;
@@ -63,7 +64,7 @@ public class ReceiptAnalyzeE2ETest {
     private static final Integer TEST_ITEM_QUANTITY = 1;
     private static final Integer TEST_ITEM_PRICE = 1;
     private static final String TEST_PAYMENT_TIME = "2024-02-15 15:30:00";
-    private final Image image = new Image("jpg", null, "TEST_DATA", "TEST_IMAGE_NAME");
+    private Image image;
 
     @LocalServerPort
     private int port;
@@ -108,6 +109,8 @@ public class ReceiptAnalyzeE2ETest {
 
         token = jwtUtil.createAccessToken(member.getId());
 
+        image = new Image("jpg", null, UUID.randomUUID().toString(), "TEST_IMAGE_NAME");
+
         ocrResponse = getGeneralOcrResponse();
         gptResponse = getChatGptResponse();
     }
@@ -150,35 +153,122 @@ public class ReceiptAnalyzeE2ETest {
         assertThat(response.getData()).isEqualTo(expected);
     }
 
-    @ParameterizedTest(name = "영수증 분석을 요청할 때, {2}가 발생한다면,에러 응답를 반환 받는다")
-    @CsvSource({
-        "200, 500, OCR API 에러",
-        "500, 200, GPT API 에러"
-    })
-    void receiptAnalysis_whenExternalApiFails_thenReturnError(int ocrStatus, int gptStatus,
-        String description)
+    @DisplayName("영수증 분석을 요청할 때, OCR API 에러가 발생한다면, 외부 API 에러 응답을 반환 받는다")
+    @Test
+    void receiptAnalysis_whenOcrApiFails_thenReturnExternalApiError()
         throws JsonProcessingException {
-
-        //given
         given(clovaOcrProperties.general().url()).willReturn(baseUrl);
+        given(openAiProperties.url()).willReturn(baseUrl);
 
-        mockWebServer.enqueue(createJsonResponse(ocrResponse, ocrStatus));
-        mockWebServer.enqueue(createJsonResponse(gptResponse, gptStatus));
+        for (int i = 0; i < 2; i++) {
+            mockWebServer.enqueue(createJsonResponse(ocrResponse, 500));
+        }
 
-        //when //then
-        RestAssured
+        assertErrorResponse(postAnalyze(), ErrorType.EXTERNAL_API_GENERAL_ERROR);
+    }
+
+    @DisplayName("영수증 분석을 요청할 때, GPT API 에러가 발생한다면, 외부 API 에러 응답을 반환 받는다")
+    @Test
+    void receiptAnalysis_whenGptApiFails_thenReturnExternalApiError()
+        throws JsonProcessingException {
+        given(clovaOcrProperties.general().url()).willReturn(baseUrl);
+        given(openAiProperties.url()).willReturn(baseUrl);
+
+        mockWebServer.enqueue(createJsonResponse(ocrResponse, 200));
+        for (int i = 0; i < 3; i++) {
+            mockWebServer.enqueue(createJsonResponse(gptResponse, 500));
+        }
+
+        assertErrorResponse(postAnalyze(), ErrorType.EXTERNAL_API_GENERAL_ERROR);
+    }
+
+    @ParameterizedTest(name = "OCR 인식 결과가 {0}(fields 비어있음: {1})이면, {2} 에러를 반환하고 GPT는 호출하지 않는다")
+    @CsvSource({
+        "FAILURE, false, RECEIPT_RECOGNITION_FAILED",
+        "SUCCESS, true, RECEIPT_RECOGNITION_FAILED",
+        "ERROR, false, EXTERNAL_API_GENERAL_ERROR"
+    })
+    void receiptAnalysis_whenOcrInferNotSuccess_thenReturnError(String inferResult,
+        boolean emptyFields, ErrorType expectedError) throws JsonProcessingException {
+        given(clovaOcrProperties.general().url()).willReturn(baseUrl);
+        given(openAiProperties.url()).willReturn(baseUrl);
+
+        mockWebServer.enqueue(
+            createJsonResponse(createOcrResponse(inferResult, emptyFields), 200));
+
+        assertErrorResponse(postAnalyze(), expectedError);
+        assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    }
+
+    @ParameterizedTest(name = "OCR 인식 결과가 {0}(fields 비어있음: {1})이면, 캐싱하지 않아 재요청 시 OCR을 다시 호출한다")
+    @CsvSource({
+        "FAILURE, false",
+        "SUCCESS, true",
+        "ERROR, false"
+    })
+    void receiptAnalysis_whenOcrInferNotSuccess_thenNotCached(String inferResult,
+        boolean emptyFields) throws JsonProcessingException {
+        given(clovaOcrProperties.general().url()).willReturn(baseUrl);
+        given(openAiProperties.url()).willReturn(baseUrl);
+
+        mockWebServer.enqueue(
+            createJsonResponse(createOcrResponse(inferResult, emptyFields), 200));
+        mockWebServer.enqueue(createJsonResponse(ocrResponse, 200));
+        mockWebServer.enqueue(createJsonResponse(gptResponse, 200));
+
+        postAnalyze();
+        postAnalyze().statusCode(SuccessType.RECEIPT_ANALYSIS_SUCCESS.getHttpStatusCode().value());
+
+        assertThat(mockWebServer.getRequestCount()).isEqualTo(3);
+    }
+
+    private void assertErrorResponse(io.restassured.response.ValidatableResponse response,
+        ErrorType errorType) {
+        response
+            .statusCode(errorType.getHttpStatusCode().value())
+            .assertThat()
+            .body("status", equalTo("failure"))
+            .body("errorCode", equalTo(errorType.getErrorCode()))
+            .body("data", equalTo(null));
+    }
+
+    private GeneralOcrResponse createOcrResponse(String inferResult, boolean emptyFields) {
+        List<GeneralOcrResponse.ImageResult.Field> fields = emptyFields
+            ? List.of()
+            : ocrResponse.images().getFirst().fields();
+        String message = "SUCCESS".equals(inferResult) ? "SUCCESS" : "TEST_ERROR_MESSAGE";
+        return new GeneralOcrResponse("V2", "TEST_REQUEST_ID",
+            List.of(new GeneralOcrResponse.ImageResult(inferResult, message, fields)));
+    }
+
+    @DisplayName("GPT 호출이 실패한 뒤 같은 이미지로 재요청하면, OCR은 다시 호출하지 않는다")
+    @Test
+    void receiptAnalysis_whenRetryAfterGptFailure_thenReuseCachedOcr()
+        throws JsonProcessingException {
+        given(clovaOcrProperties.general().url()).willReturn(baseUrl);
+        given(openAiProperties.url()).willReturn(baseUrl);
+
+        mockWebServer.enqueue(createJsonResponse(ocrResponse, 200));
+        for (int i = 0; i < 3; i++) {
+            mockWebServer.enqueue(createJsonResponse(gptResponse, 500));
+        }
+        mockWebServer.enqueue(createJsonResponse(gptResponse, 200));
+
+        assertErrorResponse(postAnalyze(), ErrorType.EXTERNAL_API_GENERAL_ERROR);
+        postAnalyze().statusCode(SuccessType.RECEIPT_ANALYSIS_SUCCESS.getHttpStatusCode().value());
+
+        assertThat(mockWebServer.getRequestCount()).isEqualTo(5);
+    }
+
+    private io.restassured.response.ValidatableResponse postAnalyze() {
+        return RestAssured
             .given()
             .header("Authorization", "Bearer " + token)
             .contentType(ContentType.JSON)
             .body(image)
             .when()
             .post("/receipts/analyze")
-            .then()
-            .statusCode(ErrorType.RECEIPT_EXTRACTION_FAILED.getHttpStatusCode().value())
-            .assertThat()
-            .body("status", equalTo("failure"))
-            .body("errorCode", equalTo(ErrorType.RECEIPT_EXTRACTION_FAILED.getErrorCode()))
-            .body("data", equalTo(null));
+            .then();
     }
 
     private MockResponse createJsonResponse(Object body, int status)
@@ -243,6 +333,7 @@ public class ReceiptAnalyzeE2ETest {
     @AfterEach
     void terminate() throws IOException {
         mockWebServer.shutdown();
+        RestAssured.reset();
     }
 
     @TestConfiguration

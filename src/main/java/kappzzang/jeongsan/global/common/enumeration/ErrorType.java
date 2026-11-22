@@ -53,6 +53,9 @@ public enum ErrorType {
     TEAM_NAME_DUPLICATED(HttpStatus.CONFLICT, "E409001", "중복된 모임 이름이 존재합니다."),
     USER_ALREADY_EXISTED(HttpStatus.CONFLICT, "E409002", "이미 회원가입된 사용자입니다."),
 
+    RECEIPT_RECOGNITION_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "E422001",
+        "영수증을 인식하지 못했습니다. 다시 촬영해 주세요."),
+
     // 500 INTERNAL_SERVER_ERROR
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "E500001", "서버 내부 오류가 발생했습니다."),
     RECEIPT_EXTRACTION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "E500002", "영수증 데이터 추출에 실패했습니다."),

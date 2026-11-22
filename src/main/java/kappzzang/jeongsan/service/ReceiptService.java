@@ -30,6 +30,8 @@ public class ReceiptService {
                 parsedOcrResponse);
             return objectMapper.readValue(gptResponse.choices().getFirst().message().content(),
                 ParsedReceiptResponse.class);
+        } catch (JeongsanException e) {
+            throw e;
         } catch (JsonProcessingException e) {
             throw new JeongsanException(ErrorType.INTERNAL_SERVER_ERROR);
         } catch (RuntimeException e) {

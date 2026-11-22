@@ -30,6 +30,7 @@ import kappzzang.jeongsan.global.common.util.JwtUtil;
 import kappzzang.jeongsan.global.exception.JeongsanException;
 import kappzzang.jeongsan.repository.ExpenseRepository;
 import kappzzang.jeongsan.repository.TestDataUtil;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -82,6 +83,11 @@ public class SaveExpenseIntegrationTest {
     private Long categoryId;
 
     private final Image image = new Image("jpg", null, "base64", "TEST_IMAGE");
+
+    @AfterEach
+    void resetRestAssured() {
+        RestAssured.reset();
+    }
 
     @Transactional
     @BeforeEach
