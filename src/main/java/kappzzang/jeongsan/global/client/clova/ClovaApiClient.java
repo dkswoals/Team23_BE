@@ -84,4 +84,9 @@ public class ClovaApiClient {
         throw new JeongsanException(ErrorType.EXTERNAL_API_GENERAL_ERROR);
     }
 
+    @Recover
+    public GeneralOcrResponse recoverFromJeongsanException(JeongsanException e, Image image) {
+        throw e;
+    }
+
 }
