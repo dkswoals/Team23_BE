@@ -17,12 +17,12 @@ import kappzzang.jeongsan.domain.Expense;
 import kappzzang.jeongsan.domain.Item;
 import kappzzang.jeongsan.domain.Member;
 import kappzzang.jeongsan.domain.Team;
+import kappzzang.jeongsan.dto.PersonalExpenseCount;
 import kappzzang.jeongsan.dto.response.ExpenseResponse;
 import kappzzang.jeongsan.global.common.enumeration.ErrorType;
 import kappzzang.jeongsan.global.common.enumeration.Status;
 import kappzzang.jeongsan.global.exception.JeongsanException;
 import kappzzang.jeongsan.repository.ExpenseRepository;
-import kappzzang.jeongsan.repository.ItemRepository;
 import kappzzang.jeongsan.repository.PersonalExpenseRepository;
 import kappzzang.jeongsan.repository.TeamRepository;
 import kappzzang.jeongsan.service.ExpenseService;
@@ -46,9 +46,6 @@ public class GetExpensesTest {
 
     @Mock
     private ExpenseRepository expenseRepository;
-
-    @Mock
-    private ItemRepository itemRepository;
 
     @Mock
     private PersonalExpenseRepository personalExpenseRepository;
@@ -89,9 +86,9 @@ public class GetExpensesTest {
         given(teamRepository.findById(any(Long.class))).willReturn(Optional.of(mockTeam));
 
         given(expenseRepository.findByTeamAndStatus(mockTeam, status)).willReturn(expenses);
-        given(itemRepository.findAllByExpenseId(expense.getId())).willReturn(items);
-        given(personalExpenseRepository.countByMemberIdAndItemIds(memberId,
-            items.stream().map(Item::getId).toList())).willReturn(0L);
+        given(expense.getItems()).willReturn(items);
+        given(personalExpenseRepository.countPerExpenseByMemberIdAndExpenseIds(memberId,
+            List.of(expense.getId()))).willReturn(Collections.emptyList());
 
         // when
         ExpenseResponse response = expenseService.getExpenses(memberId, teamId, status, isChecked);
@@ -102,7 +99,8 @@ public class GetExpensesTest {
         assertThat(response.checked()).isTrue();
 
         then(expenseRepository).should().findByTeamAndStatus(mockTeam, status);
-        then(itemRepository).should().findAllByExpenseId(expense.getId());
+        then(personalExpenseRepository).should()
+            .countPerExpenseByMemberIdAndExpenseIds(memberId, List.of(expense.getId()));
     }
 
     @Test
@@ -168,9 +166,9 @@ public class GetExpensesTest {
         given(teamRepository.findById(any(Long.class))).willReturn(Optional.of(mockTeam));
 
         given(expenseRepository.findByTeamAndStatus(mockTeam, status)).willReturn(expenses);
-        given(itemRepository.findAllByExpenseId(expense.getId())).willReturn(items);
-        given(personalExpenseRepository.countByMemberIdAndItemIds(memberId,
-            items.stream().map(Item::getId).toList())).willReturn(1L);
+        given(expense.getItems()).willReturn(items);
+        given(personalExpenseRepository.countPerExpenseByMemberIdAndExpenseIds(memberId,
+            List.of(expense.getId()))).willReturn(List.of(new PersonalExpenseCount(1L, 1L)));
 
         // when
         ExpenseResponse response = expenseService.getExpenses(memberId, teamId, status, isChecked);

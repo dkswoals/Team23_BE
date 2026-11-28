@@ -15,6 +15,7 @@ import kappzzang.jeongsan.domain.Team;
 import kappzzang.jeongsan.dto.ExpenseWithPersonalExpense;
 import kappzzang.jeongsan.dto.ItemDetail;
 import kappzzang.jeongsan.dto.ItemSummary;
+import kappzzang.jeongsan.dto.PersonalExpenseCount;
 import kappzzang.jeongsan.dto.request.ChangeExpensesStateRequest;
 import kappzzang.jeongsan.dto.request.ChangeExpensesStateRequest.ExpenseId;
 import kappzzang.jeongsan.dto.request.SaveExpenseRequest;
@@ -28,7 +29,6 @@ import kappzzang.jeongsan.global.common.enumeration.Status;
 import kappzzang.jeongsan.global.exception.JeongsanException;
 import kappzzang.jeongsan.repository.CategoryRepository;
 import kappzzang.jeongsan.repository.ExpenseRepository;
-import kappzzang.jeongsan.repository.ItemRepository;
 import kappzzang.jeongsan.repository.MemberRepository;
 import kappzzang.jeongsan.repository.PersonalExpenseRepository;
 import kappzzang.jeongsan.repository.TeamRepository;
@@ -44,7 +44,6 @@ public class ExpenseService {
     private final ImageStorageService imageStorageService;
     private final ExpenseRepository expenseRepository;
     private final PersonalExpenseRepository personalExpenseRepository;
-    private final ItemRepository itemRepository;
     private final CategoryRepository categoryRepository;
     private final MemberRepository memberRepository;
     private final TeamRepository teamRepository;
@@ -90,21 +89,33 @@ public class ExpenseService {
     private List<ExpenseWithPersonalExpense> filterOngoingExpenses(List<Expense> expenses,
         Long memberId,
         Boolean isChecked) {
+        Map<Long, Long> personalExpenseCounts = countPersonalExpensesPerExpense(expenses,
+            memberId);
         return expenses.stream()
-            .filter(expense -> isChecked.equals(isExpenseChecked(expense, memberId)))
+            .filter(expense -> isChecked.equals(isExpenseChecked(expense, personalExpenseCounts)))
             .map(expense -> ExpenseWithPersonalExpense.of(expense, null))
             .toList();
     }
 
-    private Boolean isExpenseChecked(Expense expense, Long memberId) {
-        List<Long> itemIds = itemRepository.findAllByExpenseId(expense.getId())
-            .stream()
-            .map(Item::getId)
+    private Map<Long, Long> countPersonalExpensesPerExpense(List<Expense> expenses,
+        Long memberId) {
+        if (expenses.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> expenseIds = expenses.stream()
+            .map(Expense::getId)
             .toList();
-        Long countOfPersonalExpenses = personalExpenseRepository.countByMemberIdAndItemIds(memberId,
-            itemIds);
+        return personalExpenseRepository.countPerExpenseByMemberIdAndExpenseIds(memberId,
+                expenseIds)
+            .stream()
+            .collect(Collectors.toMap(PersonalExpenseCount::expenseId,
+                PersonalExpenseCount::count));
+    }
 
-        return countOfPersonalExpenses.equals((long) itemIds.size());
+
+    private Boolean isExpenseChecked(Expense expense, Map<Long, Long> personalExpenseCounts) {
+        long countOfPersonalExpenses = personalExpenseCounts.getOrDefault(expense.getId(), 0L);
+        return countOfPersonalExpenses == expense.getItems().size();
     }
 
     private List<ExpenseWithPersonalExpense> createExpenseWithPersonalExpense(
