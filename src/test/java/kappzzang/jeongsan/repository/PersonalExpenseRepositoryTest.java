@@ -11,6 +11,7 @@ import kappzzang.jeongsan.domain.KakaoPayInfo;
 import kappzzang.jeongsan.domain.Member;
 import kappzzang.jeongsan.domain.PersonalExpense;
 import kappzzang.jeongsan.domain.Team;
+import kappzzang.jeongsan.dto.PersonalExpenseCount;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -104,5 +105,27 @@ class PersonalExpenseRepositoryTest {
         // then
         assertThat(actual).isEqualTo(
             personalExpense3.getTotalPrice() + personalExpense4.getTotalPrice());
+    }
+
+    @Test
+    @DisplayName("지출 Id 목록과 멤버 Id로 지출별 사용자의 개인 소비 내역 수를 조회하되, "
+        + "수량 0인 내역은 포함하고 내역이 없는 지출은 결과에서 제외한다")
+    void countPerExpenseByMemberIdAndExpenseIds() {
+        // given
+        testDataUtil.createAndPersistPersonalExpense(member1, 0, item3, 0);
+        List<Long> expenseIds = List.of(expense1.getId(), expense2.getId());
+
+        // when
+        List<PersonalExpenseCount> member1Counts = personalExpenseRepository
+            .countPerExpenseByMemberIdAndExpenseIds(member1.getId(), expenseIds);
+        List<PersonalExpenseCount> member2Counts = personalExpenseRepository
+            .countPerExpenseByMemberIdAndExpenseIds(member2.getId(), expenseIds);
+
+        // then
+        assertThat(member1Counts).containsExactlyInAnyOrder(
+            new PersonalExpenseCount(expense1.getId(), 1L),
+            new PersonalExpenseCount(expense2.getId(), 2L));
+        assertThat(member2Counts).containsExactly(
+            new PersonalExpenseCount(expense1.getId(), 1L));
     }
 }
